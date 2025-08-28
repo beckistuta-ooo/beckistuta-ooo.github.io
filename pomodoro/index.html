@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🍅 Pomodoro 計時器</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🍅 Pomodoro 計時器</h1>
+            <div class="mode-buttons">
+                <button id="workBtn" class="mode-btn active" data-mode="work">工作</button>
+                <button id="shortBreakBtn" class="mode-btn" data-mode="shortBreak">短休息</button>
+                <button id="longBreakBtn" class="mode-btn" data-mode="longBreak">長休息</button>
+            </div>
+        </div>
+
+        <div class="timer-section">
+            <div class="timer-display" id="timerDisplay">25:00</div>
+            <div class="timer-controls">
+                <button id="startBtn" class="control-btn primary">開始</button>
+                <button id="pauseBtn" class="control-btn">暫停</button>
+                <button id="resetBtn" class="control-btn">重設</button>
+            </div>
+        </div>
+
+        <div class="statistics">
+            <div class="stat-item">
+                <span class="stat-label">完成的番茄:</span>
+                <span id="completedCount">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">目前循環:</span>
+                <span id="currentCycle">0</span>
+            </div>
+        </div>
+
+        <div class="settings-section">
+            <button id="settingsToggle" class="settings-toggle">⚙️ 設定</button>
+            <div id="settingsPanel" class="settings-panel">
+                <div class="settings-grid">
+                    <div class="setting-group">
+                        <label for="workTime">工作時間 (分鐘):</label>
+                        <input type="number" id="workTime" min="1" max="60" value="25">
+                    </div>
+                    <div class="setting-group">
+                        <label for="shortBreakTime">短休息時間 (分鐘):</label>
+                        <input type="number" id="shortBreakTime" min="1" max="30" value="5">
+                    </div>
+                    <div class="setting-group">
+                        <label for="longBreakTime">長休息時間 (分鐘):</label>
+                        <input type="number" id="longBreakTime" min="1" max="60" value="15">
+                    </div>
+                    <div class="setting-group">
+                        <label for="sessionsPerLongBreak">長休息前的工作回合數:</label>
+                        <input type="number" id="sessionsPerLongBreak" min="2" max="8" value="4">
+                    </div>
+                    <div class="setting-group">
+                        <label for="reminderTime">提醒時間 (結束前幾分鐘):</label>
+                        <input type="number" id="reminderTime" min="0" max="10" value="5">
+                    </div>
+                    <div class="setting-group checkbox-group">
+                        <label for="enableNotifications">
+                            <input type="checkbox" id="enableNotifications">
+                            啟用瀏覽器通知
+                        </label>
+                        <button id="requestNotificationBtn" class="small-btn">請求權限</button>
+                    </div>
+                    <div class="setting-group checkbox-group">
+                        <label for="enableSound">
+                            <input type="checkbox" id="enableSound" checked>
+                            啟用音效
+                        </label>
+                    </div>
+                    <div class="setting-group">
+                        <label for="reminderSound">提醒音效:</label>
+                        <select id="reminderSound">
+                            <option value="gentle">輕柔鈴聲</option>
+                            <option value="chime">柔和鐘聲</option>
+                            <option value="ping">數位提示音</option>
+                            <option value="beep">簡單嗶聲</option>
+                            <option value="chord">和聲和弦</option>
+                            <option value="pop">彈跳音</option>
+                            <option value="click">點擊音</option>
+                        </select>
+                        <button id="previewReminderSound" class="small-btn">試聽</button>
+                    </div>
+                    <div class="setting-group">
+                        <label for="completionSound">完成音效:</label>
+                        <select id="completionSound">
+                            <option value="gentle">輕柔鈴聲</option>
+                            <option value="chime" selected>柔和鐘聲</option>
+                            <option value="ping">數位提示音</option>
+                            <option value="beep">簡單嗶聲</option>
+                            <option value="chord">和聲和弦</option>
+                            <option value="pop">彈跳音</option>
+                            <option value="click">點擊音</option>
+                        </select>
+                        <button id="previewCompletionSound" class="small-btn">試聽</button>
+                    </div>
+                </div>
+                <div class="settings-actions">
+                    <button id="resetStats" class="control-btn">重設統計</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="reminderMessage" class="reminder-message"></div>
+    </div>
+
+    <script>
+        class PomodoroTimer {
+            constructor() {
+                this.currentMode = 'work';
+                this.isRunning = false;
+                this.isPaused = false;
+                this.timeLeft = 25 * 60;
+                this.completedPomodoros = 0;
+                this.currentCycle = 0;
+                this.timer = null;
+                this.reminderShown = false;
+                this.audioContext = null;
+                
+                this.initializeElements();
+                this.initializeEventListeners();
+                this.loadSettings();
+                this.updateDisplay();
+                this.updateStatistics();
+            }
+
+            initializeElements() {
+                this.timerDisplay = document.getElementById('timerDisplay');
+                this.startBtn = document.getElementById('startBtn');
+                this.pauseBtn = document.getElementById('pauseBtn');
+                this.resetBtn = document.getElementById('resetBtn');
+                this.workBtn = document.getElementById('workBtn');
+                this.shortBreakBtn = document.getElementById('shortBreakBtn');
+                this.longBreakBtn = document.getElementById('longBreakBtn');
+                this.completedCountEl = document.getElementById('completedCount');
+                this.currentCycleEl = document.getElementById('currentCycle');
+                this.settingsToggle = document.getElementById('settingsToggle');
+                this.settingsPanel = document.getElementById('settingsPanel');
+                this.workTimeInput = document.getElementById('workTime');
+                this.shortBreakTimeInput = document.getElementById('shortBreakTime');
+                this.longBreakTimeInput = document.getElementById('longBreakTime');
+                this.sessionsPerLongBreakInput = document.getElementById('sessionsPerLongBreak');
+                this.reminderTimeInput = document.getElementById('reminderTime');
+                this.enableNotificationsCheckbox = document.getElementById('enableNotifications');
+                this.enableSoundCheckbox = document.getElementById('enableSound');
+                this.requestNotificationBtn = document.getElementById('requestNotificationBtn');
+                this.resetStatsBtn = document.getElementById('resetStats');
+                this.reminderSoundSelect = document.getElementById('reminderSound');
+                this.completionSoundSelect = document.getElementById('completionSound');
+                this.previewReminderSoundBtn = document.getElementById('previewReminderSound');
+                this.previewCompletionSoundBtn = document.getElementById('previewCompletionSound');
+                this.reminderMessage = document.getElementById('reminderMessage');
+            }
+
+            initializeEventListeners() {
+                this.startBtn.addEventListener('click', () => this.start());
+                this.pauseBtn.addEventListener('click', () => this.pause());
+                this.resetBtn.addEventListener('click', () => this.reset());
+                this.workBtn.addEventListener('click', () => this.switchMode('work'));
+                this.shortBreakBtn.addEventListener('click', () => this.switchMode('shortBreak'));
+                this.longBreakBtn.addEventListener('click', () => this.switchMode('longBreak'));
+                this.settingsToggle.addEventListener('click', () => this.toggleSettings());
+                this.requestNotificationBtn.addEventListener('click', () => this.requestNotificationPermission());
+                this.resetStatsBtn.addEventListener('click', () => this.resetStatistics());
+                this.workTimeInput.addEventListener('change', () => this.saveSettings());
+                this.shortBreakTimeInput.addEventListener('change', () => this.saveSettings());
+                this.longBreakTimeInput.addEventListener('change', () => this.saveSettings());
+                this.sessionsPerLongBreakInput.addEventListener('change', () => this.saveSettings());
+                this.reminderTimeInput.addEventListener('change', () => this.saveSettings());
+                this.enableNotificationsCheckbox.addEventListener('change', () => this.saveSettings());
+                this.enableSoundCheckbox.addEventListener('change', () => this.saveSettings());
+                this.reminderSoundSelect.addEventListener('change', () => this.saveSettings());
+                this.completionSoundSelect.addEventListener('change', () => this.saveSettings());
+                this.previewReminderSoundBtn.addEventListener('click', () => this.playSound(this.reminderSoundSelect.value));
+                this.previewCompletionSoundBtn.addEventListener('click', () => this.playSound(this.completionSoundSelect.value));
+            }
+
+            start() {
+                if (this.isPaused) {
+                    this.isPaused = false;
+                } else if (!this.isRunning) {
+                    this.isRunning = true;
+                    this.reminderShown = false;
+                }
+                
+                this.timer = setInterval(() => {
+                    this.tick();
+                }, 1000);
+                
+                this.updateButtons();
+            }
+
+            pause() {
+                this.isPaused = true;
+                clearInterval(this.timer);
+                this.updateButtons();
+            }
+
+            reset() {
+                this.isRunning = false;
+                this.isPaused = false;
+                this.reminderShown = false;
+                clearInterval(this.timer);
+                this.setTimeForCurrentMode();
+                this.updateDisplay();
+                this.updateButtons();
+            }
+
+            tick() {
+                this.timeLeft--;
+                this.updateDisplay();
+                
+                const reminderMinutes = parseInt(this.reminderTimeInput.value);
+                const reminderSeconds = reminderMinutes * 60;
+                
+                if (reminderSeconds > 0 && this.timeLeft === reminderSeconds && !this.reminderShown) {
+                    this.showReminder();
+                    this.reminderShown = true;
+                }
+                
+                if (this.timeLeft <= 0) {
+                    this.completeSession();
+                }
+                
+                this.updatePageTitle();
+            }
+
+            completeSession() {
+                this.isRunning = false;
+                this.isPaused = false;
+                clearInterval(this.timer);
+                
+                if (this.currentMode === 'work') {
+                    this.completedPomodoros++;
+                    this.currentCycle++;
+                    this.updateStatistics();
+                    this.saveStatistics();
+                }
+                
+                this.showCompletionNotification();
+                this.autoSwitchMode();
+                this.updateButtons();
+            }
+
+            autoSwitchMode() {
+                const sessionsPerLongBreak = parseInt(this.sessionsPerLongBreakInput.value);
+                
+                if (this.currentMode === 'work') {
+                    if (this.currentCycle >= sessionsPerLongBreak) {
+                        this.switchMode('longBreak');
+                        this.currentCycle = 0;
+                        this.updateStatistics();
+                        this.saveStatistics();
+                    } else {
+                        this.switchMode('shortBreak');
+                    }
+                } else {
+                    this.switchMode('work');
+                }
+            }
+
+            switchMode(mode) {
+                this.currentMode = mode;
+                this.isRunning = false;
+                this.isPaused = false;
+                this.reminderShown = false;
+                clearInterval(this.timer);
+                
+                this.setTimeForCurrentMode();
+                this.updateDisplay();
+                this.updateButtons();
+                this.updateModeButtons();
+                this.updateBodyClass();
+            }
+
+            setTimeForCurrentMode() {
+                switch (this.currentMode) {
+                    case 'work':
+                        this.timeLeft = parseInt(this.workTimeInput.value) * 60;
+                        break;
+                    case 'shortBreak':
+                        this.timeLeft = parseInt(this.shortBreakTimeInput.value) * 60;
+                        break;
+                    case 'longBreak':
+                        this.timeLeft = parseInt(this.longBreakTimeInput.value) * 60;
+                        break;
+                }
+            }
+
+            updateDisplay() {
+                const minutes = Math.floor(this.timeLeft / 60);
+                const seconds = this.timeLeft % 60;
+                this.timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                this.timerDisplay.className = `timer-display ${this.currentMode}`;
+            }
+
+            updateButtons() {
+                if (this.isRunning && !this.isPaused) {
+                    this.startBtn.style.display = 'none';
+                    this.pauseBtn.style.display = 'inline-block';
+                } else {
+                    this.startBtn.style.display = 'inline-block';
+                    this.pauseBtn.style.display = 'none';
+                }
+            }
+
+            updateModeButtons() {
+                document.querySelectorAll('.mode-btn').forEach(btn => {
+                    btn.classList.remove('active', 'work', 'shortBreak', 'longBreak');
+                });
+                
+                const activeBtn = document.getElementById(this.currentMode === 'work' ? 'workBtn' : 
+                                                        this.currentMode === 'shortBreak' ? 'shortBreakBtn' : 'longBreakBtn');
+                activeBtn.classList.add('active', this.currentMode);
+            }
+
+            updateBodyClass() {
+                document.body.className = this.currentMode;
+            }
+
+            updateStatistics() {
+                this.completedCountEl.textContent = this.completedPomodoros;
+                this.currentCycleEl.textContent = this.currentCycle;
+            }
+
+            updatePageTitle() {
+                const minutes = Math.floor(this.timeLeft / 60);
+                const seconds = this.timeLeft % 60;
+                const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                
+                if (this.isRunning && !this.isPaused) {
+                    const modeNames = {'work': '工作', 'shortBreak': '短休息', 'longBreak': '長休息'};
+                    document.title = `${timeStr} - ${modeNames[this.currentMode]} - Pomodoro 計時器`;
+                } else {
+                    document.title = '🍅 Pomodoro 計時器';
+                }
+            }
+
+            toggleSettings() {
+                this.settingsPanel.classList.toggle('open');
+            }
+
+            showReminder() {
+                const reminderMinutes = parseInt(this.reminderTimeInput.value);
+                this.showReminderMessage(`還剩 ${reminderMinutes} 分鐘！`);
+                
+                if (this.enableSoundCheckbox.checked) {
+                    this.playSound(this.reminderSoundSelect.value);
+                }
+                
+                if (this.enableNotificationsCheckbox.checked && Notification.permission === 'granted') {
+                    const modeNames = {'work': '工作', 'shortBreak': '短休息', 'longBreak': '長休息'};
+                    new Notification('番茄鐘提醒', {
+                        body: `您的${modeNames[this.currentMode]}時間還剩 ${reminderMinutes} 分鐘！`,
+                        icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🍅</text></svg>'
+                    });
+                }
+                
+                document.body.classList.add('flash');
+                setTimeout(() => document.body.classList.remove('flash'), 1500);
+            }
+
+            showCompletionNotification() {
+                const modeText = this.currentMode === 'work' ? '工作時間' : 
+                                this.currentMode === 'shortBreak' ? '短休息' : '長休息';
+                
+                this.showReminderMessage(`${modeText}完成！`);
+                
+                if (this.enableSoundCheckbox.checked) {
+                    this.playSound(this.completionSoundSelect.value);
+                }
+                
+                if (this.enableNotificationsCheckbox.checked && Notification.permission === 'granted') {
+                    const nextMode = this.currentMode === 'work' ? '休息' : '工作';
+                    new Notification('番茄鐘完成！', {
+                        body: `${modeText}完成！該${nextMode}了。`,
+                        icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🍅</text></svg>'
+                    });
+                }
+                
+                document.body.classList.add('flash');
+                setTimeout(() => document.body.classList.remove('flash'), 1500);
+            }
+
+            showReminderMessage(message) {
+                this.reminderMessage.textContent = message;
+                this.reminderMessage.style.display = 'block';
+                
+                setTimeout(() => {
+                    this.reminderMessage.style.display = 'none';
+                }, 3000);
+            }
+
+            async requestNotificationPermission() {
+                if ('Notification' in window) {
+                    const permission = await Notification.requestPermission();
+                    if (permission === 'granted') {
+                        this.enableNotificationsCheckbox.checked = true;
+                        this.saveSettings();
+                        
+                        new Notification('通知已啟用！', {
+                            body: '您現在會收到番茄鐘通知。',
+                            icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🍅</text></svg>'
+                        });
+                    }
+                } else {
+                    alert('此瀏覽器不支援通知功能。');
+                }
+            }
+
+            resetStatistics() {
+                if (confirm('您確定要重設所有統計數據嗎？')) {
+                    this.completedPomodoros = 0;
+                    this.currentCycle = 0;
+                    this.updateStatistics();
+                    this.saveStatistics();
+                }
+            }
+
+            initAudioContext() {
+                if (!this.audioContext) {
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+
+            playSound(soundType) {
+                if (!this.enableSoundCheckbox.checked) return;
+                
+                this.initAudioContext();
+                
+                const oscillator = this.audioContext.createOscillator();
+                const gainNode = this.audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(this.audioContext.destination);
+                
+                switch (soundType) {
+                    case 'gentle':
+                        this.playGentleBell(oscillator, gainNode);
+                        break;
+                    case 'chime':
+                        this.playSoftChime(oscillator, gainNode);
+                        break;
+                    case 'ping':
+                        this.playDigitalPing(oscillator, gainNode);
+                        break;
+                    case 'beep':
+                        this.playSimpleBeep(oscillator, gainNode);
+                        break;
+                    case 'chord':
+                        this.playHarmonyChord();
+                        break;
+                    case 'pop':
+                        this.playPopSound(oscillator, gainNode);
+                        break;
+                    case 'click':
+                        this.playClickSound(oscillator, gainNode);
+                        break;
+                    default:
+                        this.playGentleBell(oscillator, gainNode);
+                }
+            }
+
+            playGentleBell(oscillator, gainNode) {
+                oscillator.frequency.setValueAtTime(800, this.audioContext.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(200, this.audioContext.currentTime + 0.5);
+                gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.5);
+                oscillator.start();
+                oscillator.stop(this.audioContext.currentTime + 0.5);
+            }
+
+            playSoftChime(oscillator, gainNode) {
+                oscillator.frequency.setValueAtTime(523.25, this.audioContext.currentTime);
+                oscillator.frequency.setValueAtTime(659.25, this.audioContext.currentTime + 0.1);
+                oscillator.frequency.setValueAtTime(783.99, this.audioContext.currentTime + 0.2);
+                gainNode.gain.setValueAtTime(0.2, this.audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.8);
+                oscillator.start();
+                oscillator.stop(this.audioContext.currentTime + 0.8);
+            }
+
+            playDigitalPing(oscillator, gainNode) {
+                oscillator.frequency.setValueAtTime(1000, this.audioContext.currentTime);
+                oscillator.type = 'sine';
+                gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.2);
+                oscillator.start();
+                oscillator.stop(this.audioContext.currentTime + 0.2);
+            }
+
+            playSimpleBeep(oscillator, gainNode) {
+                oscillator.frequency.setValueAtTime(440, this.audioContext.currentTime);
+                oscillator.type = 'square';
+                gainNode.gain.setValueAtTime(0.1, this.audioContext.currentTime);
+                gainNode.gain.setValueAtTime(0.1, this.audioContext.currentTime + 0.1);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.2);
+                oscillator.start();
+                oscillator.stop(this.audioContext.currentTime + 0.2);
+            }
+
+            playHarmonyChord() {
+                const frequencies = [261.63, 329.63, 392.00];
+                
+                frequencies.forEach((freq, index) => {
+                    const oscillator = this.audioContext.createOscillator();
+                    const gainNode = this.audioContext.createGain();
+                    
+                    oscillator.connect(gainNode);
+                    gainNode.connect(this.audioContext.destination);
+                    
+                    oscillator.frequency.setValueAtTime(freq, this.audioContext.currentTime);
+                    oscillator.type = 'sine';
+                    
+                    gainNode.gain.setValueAtTime(0.1, this.audioContext.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 1);
+                    
+                    oscillator.start(this.audioContext.currentTime + index * 0.1);
+                    oscillator.stop(this.audioContext.currentTime + 1);
+                });
+            }
+
+            playPopSound(oscillator, gainNode) {
+                oscillator.frequency.setValueAtTime(150, this.audioContext.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(1200, this.audioContext.currentTime + 0.1);
+                oscillator.type = 'sawtooth';
+                gainNode.gain.setValueAtTime(0.2, this.audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
+                oscillator.start();
+                oscillator.stop(this.audioContext.currentTime + 0.1);
+            }
+
+            playClickSound(oscillator, gainNode) {
+                oscillator.frequency.setValueAtTime(1200, this.audioContext.currentTime);
+                oscillator.type = 'square';
+                gainNode.gain.setValueAtTime(0.1, this.audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.05);
+                oscillator.start();
+                oscillator.stop(this.audioContext.currentTime + 0.05);
+            }
+
+            saveSettings() {
+                const settings = {
+                    workTime: this.workTimeInput.value,
+                    shortBreakTime: this.shortBreakTimeInput.value,
+                    longBreakTime: this.longBreakTimeInput.value,
+                    sessionsPerLongBreak: this.sessionsPerLongBreakInput.value,
+                    reminderTime: this.reminderTimeInput.value,
+                    enableNotifications: this.enableNotificationsCheckbox.checked,
+                    enableSound: this.enableSoundCheckbox.checked,
+                    reminderSound: this.reminderSoundSelect.value,
+                    completionSound: this.completionSoundSelect.value
+                };
+                
+                localStorage.setItem('pomodoroSettings', JSON.stringify(settings));
+                
+                if (!this.isRunning) {
+                    this.setTimeForCurrentMode();
+                    this.updateDisplay();
+                }
+            }
+
+            loadSettings() {
+                const saved = localStorage.getItem('pomodoroSettings');
+                if (saved) {
+                    const settings = JSON.parse(saved);
+                    this.workTimeInput.value = settings.workTime || 25;
+                    this.shortBreakTimeInput.value = settings.shortBreakTime || 5;
+                    this.longBreakTimeInput.value = settings.longBreakTime || 15;
+                    this.sessionsPerLongBreakInput.value = settings.sessionsPerLongBreak || 4;
+                    this.reminderTimeInput.value = settings.reminderTime || 5;
+                    this.enableNotificationsCheckbox.checked = settings.enableNotifications || false;
+                    this.enableSoundCheckbox.checked = settings.enableSound !== undefined ? settings.enableSound : true;
+                    this.reminderSoundSelect.value = settings.reminderSound || 'gentle';
+                    this.completionSoundSelect.value = settings.completionSound || 'chime';
+                }
+                
+                this.setTimeForCurrentMode();
+                this.loadStatistics();
+            }
+
+            saveStatistics() {
+                const stats = {
+                    completedPomodoros: this.completedPomodoros,
+                    currentCycle: this.currentCycle
+                };
+                
+                localStorage.setItem('pomodoroStats', JSON.stringify(stats));
+            }
+
+            loadStatistics() {
+                const saved = localStorage.getItem('pomodoroStats');
+                if (saved) {
+                    const stats = JSON.parse(saved);
+                    this.completedPomodoros = stats.completedPomodoros || 0;
+                    this.currentCycle = stats.currentCycle || 0;
+                }
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            new PomodoroTimer();
+        });
+    </script>
+</body>
+</html>
